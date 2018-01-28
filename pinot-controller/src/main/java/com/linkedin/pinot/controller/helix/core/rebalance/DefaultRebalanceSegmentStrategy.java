@@ -59,9 +59,6 @@ public class DefaultRebalanceSegmentStrategy implements RebalanceSegmentStrategy
 
   private static final Logger LOGGER = LoggerFactory.getLogger(DefaultRebalanceSegmentStrategy.class);
 
-  private static final boolean DEFAULT_DRY_RUN = true;
-  private static final boolean DEFAULT_INCLUDE_CONSUMING = false;
-
   private HelixManager _helixManager;
   private HelixAdmin _helixAdmin;
   private String _helixClusterName;
@@ -96,8 +93,8 @@ public class DefaultRebalanceSegmentStrategy implements RebalanceSegmentStrategy
 
       LOGGER.info("Rebalancing stream partition assignment for table {}", tableConfig.getTableName());
 
-      boolean includeConsuming =
-          rebalanceUserConfig.getBoolean(RebalanceUserConfigConstants.INCLUDE_CONSUMING, DEFAULT_INCLUDE_CONSUMING);
+      boolean includeConsuming = rebalanceUserConfig.getBoolean(RebalanceUserConfigConstants.INCLUDE_CONSUMING,
+          RebalanceUserConfigConstants.DEFAULT_INCLUDE_CONSUMING);
       if (includeConsuming) {
 
         StreamPartitionAssignmentGenerator streamPartitionAssignmentGenerator =
@@ -115,7 +112,8 @@ public class DefaultRebalanceSegmentStrategy implements RebalanceSegmentStrategy
                 consumingInstances, Lists.newArrayList(tableNameWithType));
         newPartitionAssignment = tableNameToStreamPartitionAssignmentMap.get(tableNameWithType);
 
-        boolean dryRun = rebalanceUserConfig.getBoolean(RebalanceUserConfigConstants.DRYRUN, DEFAULT_DRY_RUN);
+        boolean dryRun = rebalanceUserConfig.getBoolean(RebalanceUserConfigConstants.DRYRUN,
+            RebalanceUserConfigConstants.DEFAULT_DRY_RUN);
         if (!dryRun) {
           LOGGER.info("Updating stream partition assignment for table {}", tableNameWithType);
           streamPartitionAssignmentGenerator.writeStreamPartitionAssignment(tableNameToStreamPartitionAssignmentMap);
@@ -161,16 +159,17 @@ public class DefaultRebalanceSegmentStrategy implements RebalanceSegmentStrategy
     }
 
     // update if not dryRun
-    boolean dryRun = rebalanceUserConfig.getBoolean(RebalanceUserConfigConstants.DRYRUN, DEFAULT_DRY_RUN);
+    boolean dryRun = rebalanceUserConfig.getBoolean(RebalanceUserConfigConstants.DRYRUN,
+        RebalanceUserConfigConstants.DEFAULT_DRY_RUN);
     IdealState newIdealState;
     if (!dryRun) {
       LOGGER.info("Updating ideal state for table {}", tableNameWithType);
-      newIdealState = rebalanceAndUpdateIdealState(tableConfig, targetNumReplicas, rebalanceUserConfig,
-          newPartitionAssignment);
+      newIdealState =
+          rebalanceAndUpdateIdealState(tableConfig, targetNumReplicas, rebalanceUserConfig, newPartitionAssignment);
     } else {
       LOGGER.info("Dry run. Skip writing ideal state");
-      newIdealState = rebalanceIdealState(idealState, tableConfig, targetNumReplicas, rebalanceUserConfig,
-          newPartitionAssignment);
+      newIdealState =
+          rebalanceIdealState(idealState, tableConfig, targetNumReplicas, rebalanceUserConfig, newPartitionAssignment);
     }
     return newIdealState;
   }
@@ -182,9 +181,8 @@ public class DefaultRebalanceSegmentStrategy implements RebalanceSegmentStrategy
    * @param rebalanceUserConfig
    * @param newPartitionAssignment
    */
-  private IdealState rebalanceAndUpdateIdealState(final TableConfig tableConfig,
-      final int targetNumReplicas, final Configuration rebalanceUserConfig,
-      final PartitionAssignment newPartitionAssignment) {
+  private IdealState rebalanceAndUpdateIdealState(final TableConfig tableConfig, final int targetNumReplicas,
+      final Configuration rebalanceUserConfig, final PartitionAssignment newPartitionAssignment) {
 
     final Function<IdealState, IdealState> updaterFunction = new Function<IdealState, IdealState>() {
       @Nullable
@@ -196,7 +194,7 @@ public class DefaultRebalanceSegmentStrategy implements RebalanceSegmentStrategy
     };
     HelixHelper.updateIdealState(_helixManager, tableConfig.getTableName(), updaterFunction,
         RetryPolicies.exponentialBackoffRetryPolicy(5, 1000, 2.0f));
-    return  _helixAdmin.getResourceIdealState(_helixClusterName, tableConfig.getTableName());
+    return _helixAdmin.getResourceIdealState(_helixClusterName, tableConfig.getTableName());
   }
 
   /**
@@ -211,8 +209,8 @@ public class DefaultRebalanceSegmentStrategy implements RebalanceSegmentStrategy
       Configuration rebalanceUserConfig, PartitionAssignment newPartitionAssignment) {
     // if realtime and includeConsuming, then rebalance consuming segments
     if (tableConfig.getTableType().equals(CommonConstants.Helix.TableType.REALTIME)) {
-      boolean includeConsuming =
-          rebalanceUserConfig.getBoolean(RebalanceUserConfigConstants.INCLUDE_CONSUMING, DEFAULT_INCLUDE_CONSUMING);
+      boolean includeConsuming = rebalanceUserConfig.getBoolean(RebalanceUserConfigConstants.INCLUDE_CONSUMING,
+          RebalanceUserConfigConstants.DEFAULT_INCLUDE_CONSUMING);
       if (includeConsuming) {
         rebalanceConsumingSegments(idealState, newPartitionAssignment);
       }
@@ -238,7 +236,8 @@ public class DefaultRebalanceSegmentStrategy implements RebalanceSegmentStrategy
         LLCSegmentName llcSegmentName = new LLCSegmentName(segmentName);
         int partitionId = llcSegmentName.getPartitionId();
         LLCSegmentName latestSegmentForPartition = partitionIdToLatestSegment.get(partitionId);
-        if (latestSegmentForPartition == null || llcSegmentName.getSequenceNumber() > latestSegmentForPartition.getSequenceNumber()) {
+        if (latestSegmentForPartition == null
+            || llcSegmentName.getSequenceNumber() > latestSegmentForPartition.getSequenceNumber()) {
           partitionIdToLatestSegment.put(partitionId, llcSegmentName);
         }
       }

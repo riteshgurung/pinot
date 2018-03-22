@@ -18,19 +18,19 @@ package com.linkedin.pinot.core.operator;
 import com.google.common.base.Preconditions;
 import com.linkedin.pinot.core.common.BlockDocIdIterator;
 import com.linkedin.pinot.core.common.Constants;
-import com.linkedin.pinot.core.common.Operator;
 import com.linkedin.pinot.core.operator.blocks.DocIdSetBlock;
 import com.linkedin.pinot.core.operator.docidsets.FilterBlockDocIdSet;
 import com.linkedin.pinot.core.operator.filter.BaseFilterOperator;
 import com.linkedin.pinot.core.plan.DocIdSetPlanNode;
 
+
 /**
- * BReusableFilteredDocIdSetOperator will take a filter Operator and get the matched docId set.
+ * DocIdSetOperator will take a filter Operator and get the matched docId set.
  * Internally, cached a given size of docIds, so this Operator could be replicated
  * for many ColumnarReaderDataSource.
  */
-public class BReusableFilteredDocIdSetOperator extends BaseOperator<DocIdSetBlock> {
-  private static final String OPERATOR_NAME = "BReusableFilteredDocIdSetOperator";
+public class DocIdSetOperator extends BaseOperator<DocIdSetBlock> {
+  private static final String OPERATOR_NAME = "DocIdSetOperator";
 
   private static final ThreadLocal<int[]> DOC_ID_ARRAY = new ThreadLocal<int[]>() {
     @Override
@@ -45,17 +45,10 @@ public class BReusableFilteredDocIdSetOperator extends BaseOperator<DocIdSetBloc
   private BlockDocIdIterator _blockDocIdIterator;
   private int _currentDocId = 0;
 
-  /**
-   * @param filterOperator
-   * @param docSize
-   * @param maxSizeOfDocIdSet must be less than {@link DocIdSetPlanNode}. MAX_DOC_PER_CALL which is
-   *          10000
-   */
-  public BReusableFilteredDocIdSetOperator(Operator filterOperator, int docSize,
-      int maxSizeOfDocIdSet) {
+  public DocIdSetOperator(BaseFilterOperator filterOperator, int maxSizeOfDocIdSet) {
     Preconditions.checkArgument(maxSizeOfDocIdSet <= DocIdSetPlanNode.MAX_DOC_PER_CALL);
+    _filterOperator = filterOperator;
     _maxSizeOfDocIdSet = maxSizeOfDocIdSet;
-    _filterOperator = (BaseFilterOperator) filterOperator;
   }
 
   @Override

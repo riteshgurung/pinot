@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.linkedin.pinot.query.transform;
+package com.linkedin.pinot.core.operator.transform.function;
 
 import com.linkedin.pinot.common.request.transform.TransformExpressionTree;
 import java.util.List;
@@ -32,7 +32,6 @@ public class TransformExpressionTreeTest {
   @Test
   public void testConstructor() {
     Assert.assertEquals(STANDARD_EXPRESSION_TREE.toString(), STANDARD_EXPRESSION);
-
     Assert.assertEquals(STANDARD_EXPRESSION_TREE.getExpressionType(), TransformExpressionTree.ExpressionType.FUNCTION);
     Assert.assertEquals(STANDARD_EXPRESSION_TREE.getValue(), "foo");
 

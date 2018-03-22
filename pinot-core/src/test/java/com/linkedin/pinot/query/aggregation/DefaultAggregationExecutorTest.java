@@ -21,17 +21,18 @@ import com.linkedin.pinot.common.data.Schema;
 import com.linkedin.pinot.common.request.AggregationInfo;
 import com.linkedin.pinot.common.request.transform.TransformExpressionTree;
 import com.linkedin.pinot.common.segment.ReadMode;
+import com.linkedin.pinot.core.common.DataSource;
 import com.linkedin.pinot.core.data.GenericRow;
 import com.linkedin.pinot.core.data.readers.GenericRowRecordReader;
 import com.linkedin.pinot.core.indexsegment.IndexSegment;
 import com.linkedin.pinot.core.indexsegment.generator.SegmentGeneratorConfig;
-import com.linkedin.pinot.core.operator.BReusableFilteredDocIdSetOperator;
-import com.linkedin.pinot.core.operator.BaseOperator;
-import com.linkedin.pinot.core.operator.MProjectionOperator;
+import com.linkedin.pinot.core.operator.DocIdSetOperator;
+import com.linkedin.pinot.core.operator.ProjectionOperator;
 import com.linkedin.pinot.core.operator.blocks.TransformBlock;
 import com.linkedin.pinot.core.operator.filter.MatchEntireSegmentOperator;
-import com.linkedin.pinot.core.operator.transform.TransformExpressionOperator;
+import com.linkedin.pinot.core.operator.transform.TransformOperator;
 import com.linkedin.pinot.core.plan.AggregationFunctionInitializer;
+import com.linkedin.pinot.core.plan.DocIdSetPlanNode;
 import com.linkedin.pinot.core.query.aggregation.AggregationExecutor;
 import com.linkedin.pinot.core.query.aggregation.AggregationFunctionContext;
 import com.linkedin.pinot.core.query.aggregation.DefaultAggregationExecutor;
@@ -49,8 +50,8 @@ import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
-import org.testng.annotations.AfterSuite;
-import org.testng.annotations.BeforeSuite;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
@@ -84,7 +85,6 @@ public class DefaultAggregationExecutorTest {
   private Random _random;
   private List<AggregationInfo> _aggregationInfoList;
   private String[] _columns;
-  private int[] _docIdSet;
   private double[][] _inputData;
 
   /**
@@ -94,11 +94,9 @@ public class DefaultAggregationExecutorTest {
    *
    * @throws Exception
    */
-  @BeforeSuite
-  void init() throws Exception {
-
+  @BeforeClass
+  public void setUp() throws Exception {
     _random = new Random(System.currentTimeMillis());
-    _docIdSet = new int[NUM_ROWS];
 
     int numColumns = AGGREGATION_FUNCTIONS.length;
     _inputData = new double[numColumns][NUM_ROWS];
@@ -112,7 +110,7 @@ public class DefaultAggregationExecutorTest {
       AggregationInfo aggregationInfo = new AggregationInfo();
       aggregationInfo.setAggregationType(AGGREGATION_FUNCTIONS[i]);
 
-      Map<String, String> params = new HashMap<String, String>();
+      Map<String, String> params = new HashMap<>();
       params.put("column", _columns[i]);
 
       aggregationInfo.setAggregationParams(params);
@@ -126,7 +124,7 @@ public class DefaultAggregationExecutorTest {
    */
   @Test
   void testAggregation() {
-    Map<String, BaseOperator> dataSourceMap = new HashMap<>();
+    Map<String, DataSource> dataSourceMap = new HashMap<>();
     Set<TransformExpressionTree> expressionTrees = new HashSet<>();
     for (String column : _indexSegment.getColumnNames()) {
       dataSourceMap.put(column, _indexSegment.getDataSource(column));
@@ -134,11 +132,10 @@ public class DefaultAggregationExecutorTest {
     }
     int totalRawDocs = _indexSegment.getSegmentMetadata().getTotalRawDocs();
     MatchEntireSegmentOperator matchEntireSegmentOperator = new MatchEntireSegmentOperator(totalRawDocs);
-    BReusableFilteredDocIdSetOperator docIdSetOperator =
-        new BReusableFilteredDocIdSetOperator(matchEntireSegmentOperator, totalRawDocs, 10000);
-    MProjectionOperator projectionOperator = new MProjectionOperator(dataSourceMap, docIdSetOperator);
-    TransformExpressionOperator transformOperator =
-        new TransformExpressionOperator(projectionOperator, expressionTrees);
+    DocIdSetOperator docIdSetOperator =
+        new DocIdSetOperator(matchEntireSegmentOperator, DocIdSetPlanNode.MAX_DOC_PER_CALL);
+    ProjectionOperator projectionOperator = new ProjectionOperator(dataSourceMap, docIdSetOperator);
+    TransformOperator transformOperator = new TransformOperator(projectionOperator, expressionTrees);
     TransformBlock transformBlock = transformOperator.nextBlock();
     int numAggFuncs = _aggregationInfoList.size();
     AggregationFunctionContext[] aggrFuncContextArray = new AggregationFunctionContext[numAggFuncs];
@@ -150,10 +147,7 @@ public class DefaultAggregationExecutorTest {
       aggrFuncContextArray[i].getAggregationFunction().accept(aggFuncInitializer);
     }
     AggregationExecutor aggregationExecutor = new DefaultAggregationExecutor(aggrFuncContextArray);
-    aggregationExecutor.init();
     aggregationExecutor.aggregate(transformBlock);
-    aggregationExecutor.finish();
-
     List<Object> result = aggregationExecutor.getResult();
     for (int i = 0; i < result.size(); i++) {
       double actual = (double) result.get(i);
@@ -161,21 +155,6 @@ public class DefaultAggregationExecutorTest {
       Assert.assertEquals(actual, expected,
           "Aggregation mis-match for function " + AGGREGATION_FUNCTIONS[i] + ", Expected: " + expected + " Actual: "
               + actual);
-    }
-  }
-
-  /**
-   * Clean up the temporary data (segment).
-   *
-   */
-  @AfterSuite
-  void tearDown() {
-    if (INDEX_DIR.exists()) {
-      FileUtils.deleteQuietly(INDEX_DIR);
-    }
-
-    if (_indexSegment != null) {
-      _indexSegment.destroy();
     }
   }
 
@@ -201,7 +180,7 @@ public class DefaultAggregationExecutorTest {
 
     List<GenericRow> rows = new ArrayList<>(NUM_ROWS);
     for (int i = 0; i < NUM_ROWS; i++) {
-      Map<String, Object> map = new HashMap<String, Object>();
+      Map<String, Object> map = new HashMap<>();
 
       for (int j = 0; j < _columns.length; j++) {
         String metricName = _columns[j];
@@ -213,7 +192,6 @@ public class DefaultAggregationExecutorTest {
       GenericRow genericRow = new GenericRow();
       genericRow.init(map);
       rows.add(genericRow);
-      _docIdSet[i] = i;
     }
 
     SegmentIndexCreationDriverImpl driver = new SegmentIndexCreationDriverImpl();
@@ -269,8 +247,8 @@ public class DefaultAggregationExecutorTest {
    */
   private double computeSum(double[] values) {
     double sum = 0.0;
-    for (int i = 0; i < values.length; i++) {
-      sum += values[i];
+    for (double value : values) {
+      sum += value;
     }
     return sum;
   }
@@ -282,8 +260,8 @@ public class DefaultAggregationExecutorTest {
    */
   private double computeMax(double[] values) {
     double max = Double.NEGATIVE_INFINITY;
-    for (int i = 0; i < values.length; i++) {
-      max = Math.max(max, values[i]);
+    for (double value : values) {
+      max = Math.max(max, value);
     }
     return max;
   }
@@ -295,9 +273,14 @@ public class DefaultAggregationExecutorTest {
    */
   private double computeMin(double[] values) {
     double min = Double.POSITIVE_INFINITY;
-    for (int i = 0; i < values.length; i++) {
-      min = Math.min(min, values[i]);
+    for (double value : values) {
+      min = Math.min(min, value);
     }
     return min;
+  }
+
+  @AfterClass
+  void tearDown() {
+    FileUtils.deleteQuietly(INDEX_DIR);
   }
 }
